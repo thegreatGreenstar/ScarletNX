@@ -76,7 +76,8 @@ static void astc_init(void) {
     if (g_astc_cap > g_vk.alloc_cap) g_astc_cap = g_vk.alloc_cap;
     VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                              .size = g_astc_cap,
-                             .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                             .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                      vk_bda_usage(),
                              .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
     VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
     if (!VK_OK(vmaCreateBuffer(g_vk.vma, &bi, &ai, &g_astc_scratch, &g_astc_mem, NULL)))
@@ -178,12 +179,12 @@ int vk_astc_upload(VkCommandBuffer cb, Surf* t, u32 w, u32 h, u32 depth, u32 lev
             u32 shift = tile_shift(nx, n), tw = 1u << shift, th = 64u >> shift;
             AstcParams p = {w, height, nx, n, t->f.vk == VK_FORMAT_R8G8B8A8_SRGB, shift};
             rec_CmdPushConstants(cb, g_astc_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof p, &p);
-            rec_CmdDispatch(cb, (nx + tw - 1) / tw, (n + th - 1) / th, nz);
+            vk_gate_dispatch(cb, (nx + tw - 1) / tw, (n + th - 1) / th, nz);
             scratch_barrier(cb, 0);
             VkBufferImageCopy copy = {.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, level, layer, 1},
                                       .imageOffset = {0, (i32)(y * bh), (i32)z},
                                       .imageExtent = {w, height, nz}};
-            rec_CmdCopyBufferToImage(cb, g_astc_scratch, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            vk_gate_copy(cb, t, g_astc_scratch, 1, &copy);
         }
     }
     return 1;
