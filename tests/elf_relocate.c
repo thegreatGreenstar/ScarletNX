@@ -4,8 +4,9 @@
    any host: every AArch64 relocation type and veneer against encodings worked out by hand from the Arm ARM, PowerPC64's
    instruction fields and veneer from the ELF V2 ABI, then
    AArch64 objects from the LLVM backend (when its LLVM has the AArch64 target) linked into a module and loaded into a
-   code arena whose code is only read, never run: calls out of reach must land on stubs that reach their targets, and
-   GOT slots must hold their symbols' addresses. */
+   code arena whose code is only read, never run: calls out of reach must land on stubs that reach their targets (in a
+   load larger than B's reach, on the veneers after each object's code), and GOT slots must hold their symbols'
+   addresses. */
 #include "common/utilities/common.h"
 #include "common/cpu/recompiler/llvm/elf_object.h"
 #include "common/cpu/recompiler/llvm/code_loader.h"
@@ -411,6 +412,7 @@ static int object(const char* callee_name, const char* data_name, const char* ca
                   size_t* size) {
     return object_for("aarch64-unknown-linux-gnu", callee_name, data_name, caller_name, data, size);
 }
+#endif
 
 /* the definitions object() calls into */
 static int definitions_for(const char* triple, unsigned char** data, size_t* size) {
@@ -429,6 +431,7 @@ static int definitions_for(const char* triple, unsigned char** data, size_t* siz
     snx_ir_free(ir);
     return 0;
 }
+#ifndef __APPLE__
 static int definitions(unsigned char** data, size_t* size) {
     return definitions_for("aarch64-unknown-linux-gnu", data, size);
 }
@@ -523,12 +526,76 @@ static int jit_objects(const char* triple) {
     return 0;
 }
 
+/* an object of nothing but bytes of code, which makes a load's code as large as bytes say. Module assembly: LLVM gives
+   a global's section the global's flags, so a global in a section named .text would be data */
+static int filler_object(const char* triple, size_t bytes, unsigned char** data, size_t* size) {
+    char error[1024], text[128];
+    SnxIr* ir = snx_ir_new_target("filler", '2', triple, error, sizeof(error));
+    if (!ir) return snx_error("%s", error);
+    snprintf(text, sizeof text, ".section .text.filler,\"ax\",%%progbits\n.space %zu\n", bytes);
+    LLVMSetModuleInlineAsm2(ir->mod, text, strlen(text));
+    if (snx_ir_object(ir, '2', data, size, error, sizeof(error))) return snx_error("%s", error);
+    snx_ir_free(ir);
+    return 0;
+}
+
+/* JIT: a game's whole code is one load of more than B and BL reach (128 MiB). A call from its first object to a
+   definition in its third goes through a veneer in the island after the caller's code, which the call reaches, and
+   the veneer to the definition, which the call does not; a call from its last object to this executable, outside the
+   arena, through that object's own veneer and a GOT slot of its own, beside the one of the data it reads */
+static int large_load(const char* triple) {
+    static const char* const objects[4] = {"caller", "filler", "definitions", "outward"};
+    const char* names[4] = {"caller", "ext_fn", "outward", "ext_data"};
+    char error[1024];
+    unsigned char* data[4];
+    size_t size[4], i;
+    SnxLinkInput inputs[4];
+    SnxU64 address[4], veneer, slot, data_slot;
+    SnxCodeLoader* loader;
+    int indirect = -1;
+    if (object_for(triple, "ext_fn", "ext_data", "caller", &data[0], &size[0]) ||
+        filler_object(triple, (size_t)140 << 20, &data[1], &size[1]) || definitions_for(triple, &data[2], &size[2]) ||
+        object_for(triple, "probe_far", "ext_data", "outward", &data[3], &size[3]))
+        return 1;
+    for (i = 0; i < 4; ++i) {
+        inputs[i].data = data[i];
+        inputs[i].size = size[i];
+        inputs[i].name = objects[i];
+    }
+    loader = snx_code_loader_new_machine((size_t)512 << 20, EM_AARCH64, error, sizeof(error));
+    if (!loader) return snx_error("loader: %s", error);
+    if (snx_code_define(loader, "probe_far", (SnxU64)(size_t)&probe_fn)) return snx_error("loader: defined twice");
+    if (snx_code_load(loader, inputs, 4, names, 4, address, error, sizeof(error)))
+        return snx_error("large load (%s): %s", triple, error);
+    veneer = first_branch(address[0]);
+    check(veneer > address[0] && veneer - address[0] < ((SnxU64)128 << 20),
+          "a large load's call reaches the veneer after its object's code");
+    check(stub_target(veneer, &indirect) == address[1] && indirect == 0, "the veneer jumps to the definition directly");
+    check(address[1] - address[0] >= ((SnxU64)128 << 20), "the definition is beyond B's reach");
+    veneer = first_branch(address[2]);
+    if (veneer == (SnxU64)(size_t)&probe_fn)
+        printf("the arena is within 128 MiB of this executable: no far call from a large load to check\n");
+    else {
+        slot = stub_target(veneer, &indirect);
+        check(veneer > address[2] && veneer - address[2] < ((SnxU64)128 << 20) && indirect == 1 && slot &&
+                  get64((const unsigned char*)(size_t)slot) == (SnxU64)(size_t)&probe_fn,
+              "a large load's far call through its object's veneer and GOT slot");
+    }
+    data_slot = first_got_load(address[2]);
+    check(data_slot && get64((const unsigned char*)(size_t)data_slot) == address[3],
+          "a large load's data GOT slot, beside its far call's");
+    snx_code_loader_free(loader);
+    for (i = 0; i < 4; ++i) free(data[i]);
+    return 0;
+}
+
 static int llvm_objects(void) {
     char error[1024];
     LLVMInitializeAllTargetInfos();
     LLVMInitializeAllTargets();
     LLVMInitializeAllTargetMCs();
     LLVMInitializeAllAsmPrinters();
+    LLVMInitializeAllAsmParsers(); /* large_load's filler is module assembly */
     if (snx_ir_init(error, sizeof(error))) return snx_error("%s", error);
     {
         SnxIr* probe = snx_ir_new_target("probe", '2', "aarch64-unknown-linux-gnu", error, sizeof(error));
@@ -578,7 +645,8 @@ static int llvm_objects(void) {
 #endif
     /* the JIT's objects on Linux and on macOS, where they are ELF with Darwin's calling convention (ir.c): both are
        what elf_object.c reads, with the same relocations, and Darwin's names have no leading underscore in ELF */
-    return jit_objects("aarch64-unknown-linux-gnu") || jit_objects("arm64-apple-macosx11.0.0-elf");
+    return jit_objects("aarch64-unknown-linux-gnu") || jit_objects("arm64-apple-macosx11.0.0-elf") ||
+           large_load("aarch64-unknown-linux-gnu");
 }
 
 #ifndef __APPLE__ /* AOT modules */
