@@ -1578,6 +1578,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_test(NAME plat_cpus COMMAND snx-test-plat-cpus)
 endif()
 
+# the process's memory as common.c reads it, which memory_fit takes (process_memory.c)
+add_executable(snx-test-process-memory process_memory.c)
+snx_test_target(snx-test-process-memory 11)
+target_link_libraries(snx-test-process-memory PRIVATE scarletnx-common)
+add_test(NAME process_memory COMMAND snx-test-process-memory)
+
 # EAC worked examples and edenprobe's blocks from rEden's decode_eac test (eac_blocks.c)
 add_executable(snx-test-eac-blocks eac_blocks.c support/etc2.c)
 snx_test_target(snx-test-eac-blocks 23)

@@ -189,6 +189,13 @@ double snx_seconds(void);
    snx_vm_protect commits the pages it makes accessible and decommits them with SNX_VM_NONE on Windows. 0 or -1 */
 enum { SNX_VM_NONE, SNX_VM_READ, SNX_VM_READ_WRITE, SNX_VM_READ_EXECUTE };
 size_t snx_vm_page_size(void);
+/* the memory this process is charged for now, in bytes: its footprint on macOS and iOS, its resident set on Linux and
+   Android, its working set on Windows; 0 where the system does not tell */
+SnxU64 snx_footprint(void);
+/* the memory the system can still give this process, in bytes, into *bytes: what iOS lets the app take before it ends
+   it, the memory available on Linux and Android (MemAvailable), on macOS (free, inactive and purgeable pages) and on
+   Windows (available physical memory); whether the system told it */
+int snx_memory_available(SnxU64* bytes);
 void* snx_vm_reserve(size_t size); /* NULL when the system refuses */
 int snx_vm_protect(void* p, size_t size, int access);
 void snx_vm_release(void* p, size_t size);

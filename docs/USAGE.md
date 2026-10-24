@@ -570,7 +570,7 @@ written, so a data folder with no users.ini plays as `Player`, uid `0123456789ab
 ## Settings / input
 
 `Game.ini`: help rewritten at startup, most settings hot-reload. `--key=value` overrides one run.
-Restart for `docked`, `fullscreen`, `language`, `resolution`, `anisotropy`, `memory_gb`, `heap_max_mb`, `airplane_mode`,
+Restart for `docked`, `fullscreen`, `language`, `resolution`, `anisotropy`, `memory_gb`, `memory_fit`, `heap_max_mb`, `airplane_mode`,
 `ldn`, `room`, `pipeline_threads`, `prepare_shaders`, `jit_threads`, and the `[Debug]` settings other than `log`, `auto_stub_ipc` and `diag`.
 `scarletnx --settings` prints each setting the launcher's Settings offer, one a line: its section, key, default,
 type, range and help, tab-separated. Every setting, the recompiler's too, is described once in
@@ -590,6 +590,7 @@ type, range and help, tab-separated. Every setting, the recompiler's too, is des
 | `anisotropy` | `0` | Texture filtering as the game asks. `2` to `16` sharpens surfaces seen at an angle |
 | `fps_limit` | `game` | The pace the game asks for, as on the console: 60 FPS, or 30 for a game made for 30. `0` is unlimited, and `10` to `1000` is that many FPS |
 | `memory_gb` | `0` | Memory the game sees. Below `6` it is the console's 3.2 GB, `6` gives 4.8 GB and `8` gives 6.8 GB. Games that run out of memory on 3.2 GB need `6` |
+| `memory_fit` | `0` (iOS `1`) | `1` tells the game no more of `memory_gb`'s memory than the device can still give it, measured as the game starts, less what the rest of ScarletNX takes, so a device with less than the console has is not run out of memory. The log says what it measured. `0` tells it all of it |
 | `heap_max_mb` | `0` | The most heap the game can allocate, in MB. `0` is as much as the memory allows |
 | `pipeline_threads` | `0` | Threads that make the GPU's new pipelines while the game goes on, and those of earlier runs before it starts with `prepare_shaders=2`. `0` uses all the computer's threads but two, two to twelve. `1` to `32` is that many. More make a first run's new pipelines sooner, with less CPU left for the game |
 | `async_pipelines` | `0` | `1` skips what a new shader draws while its pipeline is made, where the game would otherwise pause until it is ready. The game no longer stops where a new shader first appears, and the things that shader draws show up a few frames later. `0` waits for every pipeline |

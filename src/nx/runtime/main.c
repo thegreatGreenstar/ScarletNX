@@ -893,6 +893,10 @@ int snx_main(int argc, char** argv) {
     g_settings.log_level = 2; /* a phone's log is the only way to see what a run did: everything, until it is steadier */
 #endif
     mem_init();
+    if (g_settings.memory_fit) { /* before the game allocates: what the process holds is the runtime's alone */
+        SnxU64 available = 0, footprint = snx_footprint();
+        mem_fit(snx_memory_available(&available) && footprint, available, footprint);
+    }
     kernel_init();
     dispatch_init();
     if (g_arm_mod) arm_dispatch_init();

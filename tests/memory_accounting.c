@@ -187,6 +187,25 @@ static void test_heap(void) {
         CHECK(svc_set_heap_size(0) == 0);
     }
 }
+/* memory_fit: the game is told the budget the measure leaves, at most Memory (GB)'s, and the console's amount when
+   the system told nothing */
+static void test_fit(void) {
+    base_process();
+    CHECK(mem_fit_budget(3000 * MIB, 300 * MIB) == 2600 * MIB);  /* the rest, at least 700 MiB */
+    CHECK(mem_fit_budget(8000 * MIB, 1000 * MIB) == 7744 * MIB); /* the runtime's 1000, the graphics' 256 */
+    CHECK(mem_fit_budget(100 * MIB, 100 * MIB) == 1024 * MIB);   /* a GiB however little is left */
+    mem_fit(1, 2000 * MIB, 300 * MIB);
+    CHECK(g_hle.svcmem.fit == 1600 * MIB && mem_total() == 1600 * MIB && info(6) == 1600 * MIB);
+    CHECK(svc_set_heap_size(1546 * MIB) == R_LIMIT); /* 56 MiB used: 1544 is the most */
+    CHECK(svc_set_heap_size(1544 * MIB) == 0 && svc_set_heap_size(0) == 0);
+    mem_fit(1, 8000 * MIB, 1000 * MIB); /* more than the console's: the console's */
+    CHECK(mem_total() == 3285 * MIB);
+    g_settings.memory_gb = 8;
+    CHECK(mem_total() == 6964 * MIB);
+    g_settings.memory_gb = 0;
+    mem_fit(0, 0, 0);
+    CHECK(!g_hle.svcmem.fit && mem_total() == 3285 * MIB);
+}
 static void test_system_resource(void) {
     base_process();
     CHECK(svc_map_physical(ALIAS_BASE, 0x1000) == R_BADSTATE);
@@ -428,6 +447,7 @@ int main(void) {
         mapping_begins = mapping_ends = 0; /* test_mapping_boundary's, from the round before */
         mem_init();
         test_heap();
+        test_fit();
         test_system_resource();
         test_rollback();
         test_locked_shrink();

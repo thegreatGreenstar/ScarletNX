@@ -30,6 +30,11 @@ implementation in ScarletNX, not a port of Atmosphere's GPL-2.0-only code.
   is not the same quantity as the slab usage returned by GetInfo 17.
 - Use application pool sizes of 3285, 4916 and 6964 MiB for the 4, 6 and 8 GiB
   layouts. The latter two are 417 MiB smaller than the previous extended settings.
+- With `memory_fit=1` (iOS's default), the pool the game is told is at most what
+  the host can still give the process as the game starts, plus what the process
+  holds, less what the rest takes (the runtime then and 256 MiB for the graphics,
+  700 MiB at least), never under 1 GiB (`mem_fit_budget`). Every GetInfo above and
+  the heap's limit follow it.
 - Validate heap requests in 2 MiB steps and reject sizes at or above 8 GiB with
   InvalidSize. Keep the heap-region/process maximum and optional `heap_max_mb`
   checks separate from resource-limit failures.
