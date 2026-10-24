@@ -3,6 +3,8 @@
 /* guest threads (each on a host thread of its own), the thread table, process exit, and the four cores the threads
    take turns on */
 #include "nx/hle/kernel/kernel_int.h"
+#include <errno.h>
+#include <string.h>
 #include "nx/runtime/arm.h"
 #include "nx/runtime/loader.h"
 #include "nx/runtime/main.h"
@@ -327,8 +329,16 @@ void kthread_start(KThread* t) {
     pm_unlock(&g_hle.kernel.klock);
     LOGV("StartThread %llu entry=%llx prio=%d core=%d\n", (unsigned long long)t->id, (unsigned long long)t->entry,
          t->prio, t->core);
-    if (plat_thread(thread_main, t, HOST_STACK))
-        fatal("Could not start a host thread for guest thread %llu", (unsigned long long)t->id);
+    if (plat_thread(thread_main, t, HOST_STACK)) {
+        int reason = errno; /* plat_thread's */
+        u64 mapped = 0, hole = 0;
+        if (plat_address_space(&mapped, &hole))
+            LOG("thread: a host thread of a %llu MiB stack could not start, %llu MiB of the address space mapped, its "
+                "largest free run %llu MiB\n",
+                (unsigned long long)(HOST_STACK >> 20), (unsigned long long)(mapped >> 20),
+                (unsigned long long)(hole >> 20));
+        fatal("Could not start a host thread for guest thread %llu: %s", (unsigned long long)t->id, strerror(reason));
+    }
 }
 /* svcExitThread: the thread's waiters (joins) are woken, and its core goes to the next thread. Then its host thread
    lets go of it: its last use of the KThread, which may be freed with that reference */

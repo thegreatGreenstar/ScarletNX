@@ -67,6 +67,10 @@ i64 plat_tz_offset(void); /* local time minus UTC, in seconds */
    with smaller pages work in those, to test the larger pages' paths on any machine */
 u64 plat_vm_page(void);
 u8* plat_vm_reserve(u64 size); /* aligned to plat_vm_page, inaccessible until committed; NULL on failure */
+/* The process's address space now: what is mapped or reserved in all, and its largest free run between them, for a
+   run that fails for want of it (a thread's stack, a mapping). Whether the system told it (Linux, macOS, iOS and
+   Windows do) */
+int plat_address_space(u64* mapped, u64* largest_free);
 int plat_vm_commit(u8* p, u64 size);       /* readable and writable; 0, or -1 */
 void plat_vm_decommit(u8* p, u64 size);    /* inaccessible again, and zero when committed next */
 /* Calls cb for each run of pages in [p, p + size) written since they were last scanned, and watches them again.
