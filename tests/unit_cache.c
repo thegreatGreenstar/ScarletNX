@@ -381,6 +381,18 @@ int main(void) {
         CHECK(!snx_mkdirs(dirs[i]));
     }
 
+    /* a compiled unit's line: its time, and the memory the process holds where the system tells it */
+    {
+        char line[256];
+        const char* label = "0x10-0x20, 1 function, 4 instructions";
+        snx_unit_line(line, sizeof line, 3, 9, "code_002", label, 0, 1.3, (SnxU64)512 << 20);
+        CHECK(!strcmp(line,
+                      "  compiled block 3/9: code_002, 0x10-0x20, 1 function, 4 instructions (1.3 s, 512 MiB in use)"));
+        snx_unit_line(line, sizeof line, 3, 9, "code_002", label, 0, 1.3, 0);
+        CHECK(!strcmp(line, "  compiled block 3/9: code_002, 0x10-0x20, 1 function, 4 instructions (1.3 s)"));
+        snx_unit_line(line, sizeof line, 3, 9, "code_002", label, 1, 1.3, (SnxU64)512 << 20);
+        CHECK(!strcmp(line, "  compiled block 3/9: code_002, 0x10-0x20, 1 function, 4 instructions (cached)"));
+    }
     /* cold: both units compiled and kept */
     program(1);
     CHECK(!build(folder, out[0], 0) && run(out[0]) == 42);
