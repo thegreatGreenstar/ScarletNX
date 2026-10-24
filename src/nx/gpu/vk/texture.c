@@ -439,6 +439,16 @@ static int tex_rehash(Surf* t) {
     return 1;
 }
 
+/* a texture the GPU checked handed to the CPU's checks: write tracking from now, and its hash, which the GPU didn't
+   keep, so it is loaded once if memory differs from what was hashed when it was last loaded */
+static void tex_cpu_check(Surf* t, u64 gva) {
+    t->gpu_check = 0;
+    t->stable = 0;
+    vk_written_since(gmem_host(gva, t->size), t->size, 0); /* starts tracking it */
+    t->wseen = vk_ww_now();
+    t->hash = ~mem_hash(gva, t->size); /* not what it holds: the rehash loads it */
+    tex_rehash(t);
+}
 /* Unified memory: the GPU checks the texture against guest memory in order with the draws, and rebuilds what changed
    (texcheck.c), with no CPU hash and no write tracking. 0 when it can't now (the CPU's check then) */
 static int tex_gpu_refresh(Surf* t, int force) {
@@ -659,8 +669,12 @@ static Surf* tex_check(Surf* t, u64 gva) {
         t->checked = g_vk_present;
         t->ww_epoch = vk_ww_epoch();
         t->gw = gpu_mem_generation();
-        /* or, when it can't now (results pending over it, memory not imported), loaded again as it is */
-        if (!tex_gpu_refresh(t, !t->upload_valid)) tex_upload(t);
+        if (tex_gpu_refresh(t, !t->upload_valid)) return t->upload_valid ? t : NULL;
+        /* It can't be (memory the runtime wrote while recording, GPU-owned or not imported, results pending over
+           it): the CPU checks it from now on, as without unified memory. Loading it again at every check instead was
+           a staging copy and a rebuild of each such texture every frame and every submission */
+        tex_cpu_check(t, gva);
+        return t->upload_valid ? t : NULL;
     }
     if (t->gpu_check) return t->upload_valid ? t : NULL;
     /* an upload that ran out of memory or staging (here, or a re-upload below) is tried again once a frame. A
@@ -684,14 +698,16 @@ static Surf* tex_check(Surf* t, u64 gva) {
     /* the CPU's writes, once a frame and again after each submission or stream wait that can make new ones the
        stream's to see (vk_ww_epoch): write tracking proves the memory unchanged without hashing its texels */
     if (t->checked != g_vk_present || t->ww_epoch != vk_ww_epoch()) {
-        u32 wnow = vk_ww_now();
         int wr = vk_written_since(gmem_host(gva, t->size), t->size, t->wseen);
         int epoch = t->ww_epoch != vk_ww_epoch();
         t->ww_epoch = vk_ww_epoch();
         if (wr >= 0) {
             t->checked = g_vk_present;
             if (wr && !fresh) tex_rehash(t);
-            t->wseen = wnow + 1; /* this scan's marks are stamped with the clock after wnow */
+            /* the clock after the query: its own marks are at it, and a later scan's above it. The clock before it
+               plus one missed the next write whenever the query marked nothing, since that write's marks took the
+               same number */
+            t->wseen = vk_ww_now();
             return t->upload_valid ? t : NULL;
         }
         /* without it, hashed whole once in each epoch it is used in until it settles: what the CPU wrote before a
@@ -860,6 +876,7 @@ texture_from_memory:
     t->checked = g_vk_present;
     t->ww_epoch = vk_ww_epoch();
     if (t->gpu_check && tex_gpu_refresh(t, 1)) return t->upload_valid ? t : NULL;
+    t->gpu_check = 0; /* the CPU's checks, below */
     t->wseen = vk_ww_now();
     vk_written_since(gmem_host(gva, t->size), t->size, 0); /* starts tracking it */
     t->wseen = vk_ww_now();

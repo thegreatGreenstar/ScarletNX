@@ -16,9 +16,10 @@ Implemented: Clang/CMake, Linux/Windows CI, SDL3/Vulkan, shader caches, componen
 - **Audio:** `audren` splitters, voice biquads, delay/reverb/biquad effects. Validate hwopus playback.
 - **GPU:** per-channel scheduling so a blocked channel cannot stall its fence producer.
   90-degree framebuffer rotation, attachment feedback. Check the BCn fallback (decoded on the GPU) on a Mali device.
-  Unified memory (`docs/UMA.md`) reads and writes guest buffers in place, and the GPU checks and rebuilds textures
-  itself. It is checked on lavapipe only so far, which runs the texture rebuilds' store fallback but neither copy
-  extension. Next it needs a game on RADV, ANV and NVIDIA.
+  Unified memory (`docs/UMA.md`) reads and writes guest buffers in place on GPUs that share the CPU's memory, and
+  the GPU checks and rebuilds textures itself there. Discrete GPUs keep their own copies. It is checked on lavapipe
+  only so far, which runs the texture rebuilds' store fallback but neither copy extension. Next it needs a game on an
+  integrated GPU, and the texture checks need to read less.
 - **CPU:** ARM NaN propagation/default-NaN and directed FP rounding. Thread suspension at WFE.
   32-bit games run (A32 and Thumb, `src/nx/runtime/arm.c`), checked only with the synthetic program
   (`tests/nx_arm32_smoke.py`): a real one, ldr:ro's NROs in a 32-bit process, the Thumb32 DSP and
