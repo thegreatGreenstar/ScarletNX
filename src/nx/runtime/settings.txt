@@ -192,6 +192,14 @@ setting Heap limit (MB)
     startup
     set options_heap_max_set
     help The most heap the game can allocate, in MB; 0 = as much as its memory allows
+setting Thread stack (MB)
+    key thread_stack_mb
+    int 1 256
+    default 32
+    default-if SNX_IOS 8
+    startup
+    help The host stack of each of the game's threads, in MB: a game's deep calls take it. Less leaves address space
+    help for more threads where a device has little, and a game that calls very deep may then stop
 setting Pipeline threads
     key pipeline_threads
     int 0 32

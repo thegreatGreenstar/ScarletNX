@@ -60,11 +60,15 @@ int mem_map(u64 addr, u64 size, u32 state, u32 perm) {
 u64 mem_total(void) { return 0; }
 u64 used_memory(void) { return 0; }
 void plat_exit_now(int code) { exit(code); }
+/* a guest thread's host thread, never run here: the stack it was asked with */
+static size_t started_stack;
+static int starts;
 int plat_thread(PThreadFn fn, void* arg, size_t stack) {
     (void)fn;
     (void)arg;
-    (void)stack;
-    return -1;
+    started_stack = stack;
+    ++starts;
+    return 0;
 }
 void plat_thread_exit(void) { pthread_exit(NULL); }
 void save_hints(void) {}
@@ -402,6 +406,11 @@ int main(void) {
         t = kthread_create(0x1000, 0, 0x2000, 44, 0);
         CHECK(t == first[7] && t->id == first[KTHREAD_MAX - 1]->id + 1 && kthread_live_count() == KTHREAD_MAX,
               "the freed slot holds the new thread, %llu", (unsigned long long)t->id);
+        /* its host thread starts on thread_stack_mb's stack */
+        g_settings.thread_stack_mb = 8;
+        kthread_start(t);
+        CHECK(starts == 1 && started_stack == (size_t)8 << 20, "%d started, a stack of %zu bytes", starts,
+              started_stack);
     }
 
     printf("%u checks, %u failed\n", checks, failures);
