@@ -256,12 +256,53 @@ static void timeline_wait(u64 value) {
     SNX_ZONE_END(z);
     gpu_wait_note(NULL, 0);
 }
+/* A buffer that one object hands to every frame in flight (the block linear scratch): its replacement is made while
+   the submissions that read the old one may still be running, and the frame slot that would defer it knows only its
+   own submissions. Each goes with the timeline value of the submission that follows its replacement, and is freed
+   once the GPU has passed that value: at the next landing, and at a vk_finish, so no game has to call one to release
+   it */
+typedef struct {
+    VkBuffer b;
+    VmaAllocation a;
+    u64 value;
+} Retired;
+static Retired* g_retired;
+static u32 g_nretired, g_capretired;
+void vk_retire_buffer(VkBuffer b, VmaAllocation a) {
+    if (g_nretired == g_capretired) {
+        u32 cap = g_capretired ? g_capretired * 2 : 8;
+        Retired* grown = realloc(g_retired, cap * sizeof *grown);
+        /* out of memory for the list: the frame slot's deferral, as this did before */
+        if (!grown) {
+            vk_defer_buffer(b, a);
+            return;
+        }
+        g_retired = grown;
+        g_capretired = cap;
+    }
+    g_retired[g_nretired++] = (Retired){b, a, vk_submit_number()};
+}
+/* the retirements the timeline value done, or an earlier one, has passed */
+static void retired_free(u64 done) {
+    for (u32 i = 0; i < g_nretired;) {
+        if (g_retired[i].value > done) {
+            i++;
+            continue;
+        }
+        Retired r = g_retired[i];
+        g_retired[i] = g_retired[--g_nretired];
+        vk_mem_untrack(r.a);
+        vmaDestroyBuffer(g_vk.vma, r.b, r.a);
+    }
+}
+
 /* the storage results of every submission up to value, which has finished, land in guest memory, in order */
 static void land_through(u64 value) {
     while (g_landed < value) {
         vk_buf_frame_done(++g_landed);
         vk_gfx_image_frame_done(g_landed);
     }
+    retired_free(value);
 }
 
 /* the frame's previous use is done, its results landed and what it held freed, before it records again */
@@ -514,38 +555,12 @@ void vk_submit_after(VkSemaphore sem, u64 wait, u64 signal) {
 }
 
 u64 g_vk_finishes, g_vk_finish_ns;
-/* buffers shared by every frame in flight, replaced before the frames that use them are done (the block linear
-   scratch): kept until a vk_finish has waited for every submission */
-typedef struct {
-    VkBuffer b;
-    VmaAllocation a;
-} Retired;
-static Retired* g_retired;
-static u32 g_nretired, g_capretired;
-void vk_retire_buffer(VkBuffer b, VmaAllocation a) {
-    if (g_nretired == g_capretired) {
-        u32 cap = g_capretired ? g_capretired * 2 : 8;
-        Retired* grown = realloc(g_retired, cap * sizeof *grown);
-        if (!grown) return; /* freed with the process */
-        g_retired = grown;
-        g_capretired = cap;
-    }
-    g_retired[g_nretired++] = (Retired){b, a};
-}
-static void retired_free(void) {
-    for (u32 i = 0; i < g_nretired; i++) {
-        vk_mem_untrack(g_retired[i].a);
-        vmaDestroyBuffer(g_vk.vma, g_retired[i].b, g_retired[i].a);
-    }
-    g_nretired = 0;
-}
 void vk_finish(void) {
     u64 t0 = plat_ns();
     SNX_ZONE(z_finish, "vk finish");
     vk_submit(VK_NULL_HANDLE, 0, VK_NULL_HANDLE);
     timeline_wait(g_gval);
-    land_through(g_gval);
-    retired_free();
+    land_through(g_gval); /* frees the buffers retired before this submission too */
     g_vk_finishes++;
     g_vk_finish_ns += plat_ns() - t0;
 }
