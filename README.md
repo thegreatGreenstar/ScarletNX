@@ -25,8 +25,10 @@ and [ScarletNX-android-universal.apk](https://github.com/scarletnx/nightly/relea
 Games need a Vulkan 1.3 driver.
 
 Keys and games must be dumped from your own console. Started with no arguments, the program opens the
-[launcher](docs/GUI.md). **Install Keys** installs your `prod.keys`. For NSPs, also put `title.keys` in
-`~/.switch` (`%USERPROFILE%\.switch` on Windows). **Load Switch NSP/XCI/NRO** then picks a dump, extracts and
+[launcher](docs/GUI.md). **Install Keys** installs your `prod.keys` for Switch and your `aes_keys.txt` for the
+encrypted 3DS games. For NSPs, also put `title.keys` in
+`~/.switch` (`%USERPROFILE%\.switch` on Windows), as the 3DS's `aes_keys.txt` goes in `~/.3ds` (`%USERPROFILE%\.3ds`).
+**Load Switch NSP/XCI/NRO** then picks a dump, extracts and
 recompiles it and starts the game, which the **Games** tab lists from then on. See [Usage](docs/USAGE.md) for the
 command line and [Folders](docs/USAGE.md#folders) for where games, saves and settings go.
 
