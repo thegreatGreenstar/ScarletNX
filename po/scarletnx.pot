@@ -1560,6 +1560,10 @@ msgstr ""
 msgid "Recompile"
 msgstr ""
 
+#: src/gui/main.c
+msgid "Turn On"
+msgstr ""
+
 #. Keys: "Key: what it does." sentences. Keep each key, or its translation in this file, and each ~
 #: src/gui/main.c
 #, snx-keys
@@ -2619,6 +2623,14 @@ msgid "The theme, the menu's letters, the theme editor and the folders"
 msgstr ""
 
 #: src/gui/main.c
+msgid "Plugins"
+msgstr ""
+
+#: src/gui/main.c
+msgid "Patches of a running game, built in or from plugins/"
+msgstr ""
+
+#: src/gui/main.c
 msgid "is not there"
 msgstr ""
 
@@ -3260,6 +3272,56 @@ msgstr ""
 #: src/gui/main.c
 #, c-format
 msgid "%s is compiling (%d%%): %s waits until the queue ends"
+msgstr ""
+
+#: src/gui/main.c
+#, c-format
+msgid "%s: versions %s. %s"
+msgstr ""
+
+#: src/gui/main.c
+msgid "On: its patches are written when the game starts"
+msgstr ""
+
+#: src/gui/main.c
+msgid "Off: the game runs as it was made"
+msgstr ""
+
+#: src/gui/main.c
+msgid "No plugins"
+msgstr ""
+
+#: src/gui/main.c
+#, c-format
+msgid "A folder of %s, a plugin.ini and a patch file for each game build, is a plugin"
+msgstr ""
+
+#: src/gui/main.c
+msgid "Plugins can crash the game, corrupt a save and stop working between a game or ScarletNX update. Expect breakage. A plugin is off until it is turned on, and turning it on asks once."
+msgstr ""
+
+#: src/gui/main.c
+#, c-format
+msgid "Not kept: %s"
+msgstr ""
+
+#: src/gui/main.c
+#, c-format
+msgid "%s is off: the game runs as it was made"
+msgstr ""
+
+#: src/gui/main.c
+#, c-format
+msgid "Turn on %s? Plugins can crash the game, corrupt a save and stop working between a game or ScarletNX update. Expect breakage."
+msgstr ""
+
+#: src/gui/main.c
+msgid "Not turned on"
+msgstr ""
+
+#: src/gui/main.c
+#, c-format
+msgid "%s is on: its patches are written when a game it names starts"
 msgstr ""
 
 #: src/gui/main.c

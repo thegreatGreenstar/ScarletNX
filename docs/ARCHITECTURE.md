@@ -246,7 +246,7 @@ covers hooks in code the game maps itself (NROs), which only the JIT runs.
 
 | `src/nx/` directory | Responsibility |
 | --- | --- |
-| `runtime/` | Module loading, INI, clock, `RtAPI`, crashes; `settings.txt`, every setting (`tools/settingsgen` generates `snx_settings.h`, `g_settings` and the tables the runtime, the launcher and the recompiler read them with) |
+| `runtime/` | Module loading, INI, clock, `RtAPI`, crashes; `settings.txt`, every setting (`tools/settingsgen` generates `snx_settings.h`, `g_settings` and the tables the runtime, the launcher and the recompiler read them with); the plugins built into the runtime and the extra ones of the data folder's `plugins/` (`plugins.c`, [Plugins](PLUGINS.md)) |
 | `hle/kernel/`, `hle/svc/`, `memory/` | Objects, threads, sync, SVC, Switch memory, IPC |
 | `hle/services/`, `hle/filesystem/` | Services, nvdrv, guest filesystem services |
 | `gpu/` and `gpu/nvn/` | Guest memory as the GPU sees it, the GPU thread, NVN (loader, objects, command buffers, replay), shaders, Vulkan renderer |

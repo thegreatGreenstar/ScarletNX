@@ -5,6 +5,7 @@
 #include "nx/runtime/main.h"
 #include "nx/hle/filesystem/fs.h"
 #include "nx/memory/mem.h"
+#include "nx/runtime/plugins.h"
 #include "nx/runtime/platform/log.h"
 #include "common/utilities/patches.h"
 #include <stdlib.h>
@@ -40,6 +41,8 @@ size_t fs_patches(char* const** paths) {
     *paths = patch_paths;
     return patch_count;
 }
+/* the test's loader is linked without the plugin runtime: no plugin patches it */
+void plugins_patch_module(const SnxModInfo* mi) { (void)mi; }
 int fs_map_file(const char* path, PFileMap* map) {
     if (nso) {
         if (strcmp(path, "exefs/main")) return -1;

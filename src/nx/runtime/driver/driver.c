@@ -1080,6 +1080,7 @@ static int takes_value(const char* arg) {
 static int setting_known(const char* option) {
     char key[64];
     size_t n = (size_t)(strchr(option, '=') - option);
+    if (!strncmp(option, "plugins-dir=", 12) || !strncmp(option, "plugins-on=", 11)) return 1;
     if (!snx_setting_known || n >= sizeof key) return 0;
     memcpy(key, option, n);
     key[n] = 0;

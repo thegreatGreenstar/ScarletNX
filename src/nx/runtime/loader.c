@@ -8,6 +8,7 @@
 #include "nx/hle/filesystem/fs.h"
 #include "common/utilities/patches.h"
 #include "nx/memory/mem.h"
+#include "nx/runtime/plugins.h"
 #include "nx/runtime/platform/log.h"
 #include "nx/runtime/platform/plat.h"
 #include <lz4.h>
@@ -172,6 +173,7 @@ static int load_module(const SnxModInfo* mi) {
     }
     plat_file_unmap(&map);
     if (rc) return rc;
+    plugins_patch_module(mi);
     if (protect(mi)) {
         WARN("Cannot set the permissions of %s\n", mi->name);
         return -1;

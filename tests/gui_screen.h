@@ -58,6 +58,7 @@ static inline const uint8_t* font_rows(int c) {
 #define ICON_HARD_DRIVE_DOWNLOAD "\uE023"
 #define ICON_ACTIVITY            "\uE024"
 #define ICON_INFO                "\uE025"
+#define ICON_PUZZLE              "\uE026"
 static inline void is_icon(const char* text, unsigned icon) {
     const char* at = text;
     assert(gui_utf8_step(&at) == icon && !*at);

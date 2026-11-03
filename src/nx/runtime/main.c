@@ -29,6 +29,7 @@
 #include "nx/runtime/loader.h"
 #include "nx/runtime/options.h"
 #include "nx/runtime/pause.h"
+#include "nx/runtime/plugins.h"
 #include "nx/runtime/state.h"
 #include "nx/runtime/rtapi.h"
 #include "nx/runtime/startup.h"
@@ -855,6 +856,11 @@ int snx_main(int argc, char** argv) {
         status = 2;
         goto done;
     }
+    status = plugins_options(&argc, argv);
+    if (status) {
+        status = 2;
+        goto done;
+    }
     status = snx_startup_options(argc, argv);
     if (status) goto done;
     if (argc == 2 && !strcmp(argv[1], "--settings")) {
@@ -982,6 +988,7 @@ int snx_main(int argc, char** argv) {
     /* after NVN, which says whether calls must go through the slots it takes. The JIT compiles A64: a 32-bit
        game's blocks are arm.c's, and its hints are A32 block keys the JIT must not warm-compile */
     if (!g_arm_mod) jit_init();
+    if (!g_arm_mod) plugins_code_changed();
     read_npdm();
     svc_core_init();
     {

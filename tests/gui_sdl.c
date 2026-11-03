@@ -4092,7 +4092,7 @@ int main(int argc, char** argv) {
     /* Settings: the launcher's own, then each setting the runtime lists, a row each with its help above; what the
        menu's items used to set is in them */
     key(&app, SDLK_SPACE);
-    assert(app.editing && app.editor.object && app.editor.count == 6); /* User the last */
+    assert(app.editing && app.editor.object && app.editor.count == 7); /* Plugins the last */
     /* and the disk: what ScarletNX's folders take, counted on a thread, and what is left */
     {
         char line[256], used[32], left[32];
@@ -4134,7 +4134,7 @@ int main(int argc, char** argv) {
     /* the groups first: App, then a group per section the runtime lists (their reset is App's); beside them the
        focused group's rows, in the tips what it holds */
     render(&app);
-    assert(app.form == GUI_FORM_SETTINGS && app.groups == 6 && gui_editor_rows(&app.editor) == 6);
+    assert(app.form == GUI_FORM_SETTINGS && app.groups == 7 && gui_editor_rows(&app.editor) == 7);
     shows(&app, "SETTINGS", normal);
     shows_half(&app, "The theme, the menu's", normal); /* in the tips, a half step under the text's */
     shows(&app, "- " ICON_APP_WINDOW " App", yellow);
@@ -4144,6 +4144,7 @@ int main(int argc, char** argv) {
     shows(&app, "- " ICON_POINTER " Overlay", normal); /* the runtime's On-screen controls */
     hides(&app, "On-screen controls", normal);
     shows(&app, "- " ICON_USER " User", normal);
+    shows(&app, "- " ICON_PUZZLE " Plugins", normal);
     /* App's last row, beside: none among the groups; greyed, every setting at its default (#614) */
     shows(&app, "Reset to Defaults", rgb(app.theme.soft));
     hides(&app, "\x1e", rgb(app.theme.soft)); /* every row shows: no arrows */
@@ -9491,16 +9492,16 @@ int main(int argc, char** argv) {
                its column follows its focus in tests/gui_ui.c */
             app.menu.text_size = GUI_TEXT_MAX - 1;
             key(&app, SDLK_ESCAPE);
-            app.editor.row = app.groups - 1;
+            app.editor.row = app.groups - 2;
             key(&app, SDLK_RETURN);
-            assert(app.editing && app.form != GUI_FORM_SETTINGS && app.group == app.groups - 1);
+            assert(app.editing && app.form != GUI_FORM_SETTINGS && app.group == app.groups - 2);
             render(&app);
             {
                 GuiFormBoxes f;
                 GuiRect b;
                 form_boxes(&app, &f);
                 assert(f.place.side.w && form_shown(&app, &f, false) >= (size_t)app.groups && !form_first(&f, false));
-                b = form_row_box(&app, &f, false, app.groups - 1);
+                b = form_row_box(&app, &f, false, app.groups - 2);
                 assert(b.h && same_colour(pixel(&app, (float)b.x, (float)(b.y + b.h / 2)), rgb(app.theme.focus)));
             }
             key(&app, SDLK_ESCAPE);
@@ -10491,9 +10492,9 @@ int main(int argc, char** argv) {
             assert(b.y - form_row_box(&app, &f, false, 0).y == item_h(&app) + 2 * s && b.h == item_h(&app));
             b = form_row_box(&app, &f, false, 0);
             text_px_is(&app, b.x + cw / 2, item_text_y(&app, b), "- " ICON_APP_WINDOW " App", yellow, black);
-            b = form_row_box(&app, &f, false, app.groups - 1); /* the last group, whole */
-            snprintf(last, sizeof last, "- %s %s", gui_icon_utf8(group_icon(app.group_keys[app.groups - 1].key), glyph),
-                     app.group_keys[app.groups - 1].key);
+            b = form_row_box(&app, &f, false, app.groups - 2); /* the last group, whole */
+            snprintf(last, sizeof last, "- %s %s", gui_icon_utf8(group_icon(app.group_keys[app.groups - 2].key), glyph),
+                     app.group_keys[app.groups - 2].key);
             text_px_is(&app, b.x + cw / 2, item_text_y(&app, b), last, normal, black);
             text_px_is(&app, f.place.side.x + cw, f.place.side.y + 2 * s, "App", normal, black);
             /* the note at the foot of the rows whole, wrapped to the box, a half step under the text's letters: at 2x
@@ -12439,15 +12440,15 @@ int main(int argc, char** argv) {
         app.theme = *gui_theme_builtin("yorha");
         app.theme.grid = false;
         open_settings(&app);
-        app.editor.row = app.groups - 1; /* the last group */
+        app.editor.row = app.groups - 2; /* the last group */
         render(&app);
         form_boxes(&app, &f);
-        b = form_row_box(&app, &f, false, app.groups - 1);
+        b = form_row_box(&app, &f, false, app.groups - 2);
         {
             char last[80], glyph[4];
             snprintf(last, sizeof last, "\xfe %s %s",
-                     gui_icon_utf8(group_icon(app.group_keys[app.groups - 1].key), glyph),
-                     app.group_keys[app.groups - 1].key);
+                     gui_icon_utf8(group_icon(app.group_keys[app.groups - 2].key), glyph),
+                     app.group_keys[app.groups - 2].key);
             text_px_is(&app, b.x + cw / 2, item_text_y(&app, b), last, rgb(app.theme.page), rgb(app.theme.focus));
         }
         for (row = 0; row < app.groups && strcmp(app.group_keys[row].key, "Display"); ++row) {}

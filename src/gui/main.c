@@ -12,6 +12,7 @@
 #include "common/utilities/common.h"
 #include "common/utilities/game_ini.h"
 #include "common/utilities/cheat_list.h"
+#include "common/utilities/builtin_plugins.h"
 #include "common/utilities/mods.h"
 #include "common/cpu/aarch64/cpu.h" /* SNX_ABI, which the games this build's driver makes are stamped with */
 #include "common/utilities/state_header.h"
@@ -100,6 +101,7 @@ enum {
     GUI_FORM_USERS,
     GUI_FORM_DRIVERS,   /* Settings > App > GPU Drivers, or a game's own GPU driver */
     GUI_FORM_FREEDRENO, /* Settings > App > Freedreno Settings, or a game's own */
+    GUI_FORM_PLUGINS,   /* Settings > App > Plugins */
     GUI_FORM_FETCH      /* GPU Drivers > Download Driver */
 };
 /* Settings > User's values: who the games play as, then each user's nickname as it is typed */
@@ -230,6 +232,18 @@ typedef struct {
     char drivers[64], freedreno[32];
     char folder[GUI_FOLDER_ROWS][64];
 } GuiAppForm;
+/* Settings > App > Plugins: each folder of plugins/ that reads, its name and versions, and whether it is on */
+#define GUI_PLUGINS_MAX 32
+typedef struct {
+    char id[64];
+    char name[96];
+    char title[160];
+    char versions[160];
+    bool on;
+} GuiPlugin;
+typedef struct {
+    char value[GUI_PLUGINS_MAX][8];
+} GuiPluginsForm;
 /* GPU Drivers' values: each row's mark, (*) on the pick */
 #define GUI_DRIVERS_SHOWN 64 /* the packages the page lists; its note says how many more there are */
 #define GUI_DRIVER_ROWS   (GUI_DRIVERS_SHOWN + 4) /* Global, System driver, the packages, Download Driver, Add Driver */
@@ -569,6 +583,16 @@ typedef struct App {
     GuiFreedrenoForm fd_form;
     GuiThemeKey fd_keys[GUI_FREEDRENO_ROWS];
     char fd_about[GUI_FREEDRENO_ROWS][300];
+    /* Settings > App > Plugins: each folder of plugins/ that reads, the one a question asks about, and its page's
+       rows */
+    char* plugins_dir;
+    GuiPlugin plugins_list[GUI_PLUGINS_MAX];
+    int plugins_count;
+    int plugin_ask;
+    GuiPluginsForm plugins_form;
+    GuiThemeKey plugins_keys[GUI_PLUGINS_MAX + 1];
+    char plugins_label[GUI_PLUGINS_MAX + 1][96];
+    char plugins_about[GUI_PLUGINS_MAX + 1][700];
     /* GPU Drivers > Download Driver: each repository's releases and its state, the page's rows (what repository and
        release each is), a release's downloads in the picks box, the download going and what it said last */
     GuiHttpsGet https_get; /* NULL in a build without OpenSSL */
@@ -2221,6 +2245,7 @@ static const char* ask_question(App* app) {
         case GUI_ASK_STATE:
         case GUI_ASK_CACHE:
         case GUI_ASK_DRIVER: return app->ask_line;
+        case GUI_ASK_PLUGIN: return app->ask_line;
         case GUI_ASK_ERROR: return app->error_line;
         case GUI_ASK_CLOSE:
             if (!app->menu.running && !app->finished) return job_leaving(app);
@@ -2631,6 +2656,7 @@ static const char* const ask_choices[][2] = {{SNX_TR_NOOP("Continue"), SNX_TR_NO
                                              {SNX_TR_NOOP("Cancel"), SNX_TR_NOOP("Exit")},
                                              {SNX_TR_NOOP("Play"), SNX_TR_NOOP("Recompile")},
                                              {SNX_TR_NOOP("Cancel"), SNX_TR_NOOP("Remove")},
+                                             {SNX_TR_NOOP("Cancel"), SNX_TR_NOOP("Turn On")},
                                              {SNX_TR_NOOP("OK"), NULL}};
 /* a question added to GuiAsk takes its choices here, in its place */
 typedef char snx_gui_ask_choices[SDL_arraysize(ask_choices) == GUI_ASK_ERROR + 1 ? 1 : -1];
@@ -7592,7 +7618,7 @@ static unsigned group_icon(const char* name) {
                  {"Graphics", GUI_ICON_IMAGE},  {"Performance", GUI_ICON_GAUGE},
                  {"Overlay", GUI_ICON_POINTER}, {"Controllers", GUI_ICON_GAMEPAD_2},
                  {"Network", GUI_ICON_WIFI},    {"User", GUI_ICON_USER},
-                 {"Debug", GUI_ICON_BUG}};
+                 {"Debug", GUI_ICON_BUG},       {"Plugins", GUI_ICON_PUZZLE}};
     for (size_t i = 0; i < SDL_arraysize(icons); ++i)
         if (!strcmp(icons[i].name, name)) return icons[i].icon;
     return GUI_ICON_NONE;
@@ -7624,6 +7650,7 @@ static void settings_groups(App* app) {
         snprintf(about + n, sizeof app->group_about[g] - n, "%s%s", n ? ", " : "", s->keys[r].key);
         ++app->group_rows[g];
     }
+    group_add(app, SNX_TR_NOOP("Plugins"), 0, snx_tr("Patches of a running game, built in or from plugins/"));
 }
 /* the groups, row on the focus */
 static void settings_top(App* app, int row) {
@@ -7704,6 +7731,8 @@ static void places_apply(App* app) {
         app->place[GUI_PLACE_GAMES] ? snx_strdup(app->place[GUI_PLACE_GAMES]) : place_default(app, GUI_PLACE_GAMES);
     free(app->themes_dirs[0]);
     app->themes_dirs[0] = snx_path_join(app->data_dir, "themes");
+    free(app->plugins_dir);
+    app->plugins_dir = snx_path_join(app->data_dir, "plugins");
     dumps_make(app);
     free(app->work_dir);
     app->work_dir =
@@ -9421,9 +9450,19 @@ static void users_commit(App* app) {
     }
     users_fill(app); /* the rows as users.ini says */
 }
+static void plugins_scan_gui(App* app);
+static void plugins_show(App* app, int row);
 static void open_group(App* app, int g) {
     if (!g) {
         open_app(app, 0);
+        return;
+    }
+    if (!strcmp(app->group_keys[g].key, "Plugins")) {
+        app->group = g;
+        app->page = -1;
+        app->view_count = 0;
+        plugins_scan_gui(app);
+        plugins_show(app, 0);
         return;
     }
     if (users_group(app, g)) {
@@ -9479,7 +9518,7 @@ static void leave_form(App* app) {
         open_group(app, app->group);
         app->editor.row = SDL_max(row_of(app, row), 0);
         app->editing = true;
-    } else if (form == GUI_FORM_GROUP || form == GUI_FORM_APP || form == GUI_FORM_USERS)
+    } else if (form == GUI_FORM_GROUP || form == GUI_FORM_APP || form == GUI_FORM_USERS || form == GUI_FORM_PLUGINS)
         settings_top(app, app->group);
     else if (form == GUI_FORM_FOLDERS && app->folders_from_games) { /* Games again, its list with what was added */
         app->folders_from_games = false;
@@ -9742,6 +9781,171 @@ static bool queue_waits(App* app, const char* what) {
     snprintf(app->editor.note, sizeof app->editor.note, snx_tr("%s is compiling (%d%%): %s waits until the queue ends"),
              gui_queue_name(&app->queue, run), SDL_max(app->queue.job[run].percent, 0), snx_tr(what));
     return true;
+}
+/* ---- Settings > App > Plugins: each folder of plugins/ in the data folder, a plugin.ini that names it and the
+   versions of a game it knows, and a patch file for each build (dist/plugins/ToTK is the first). Every one is off
+   until it is turned on, which asks once and keeps it in settings.ini's plugins_on= ---- */
+static int plugin_token(const char* list, const char* token) {
+    size_t n = strlen(token);
+    const char* p = list ? list : "";
+    while (*p) {
+        const char* end;
+        while (*p == ',' || *p == ' ' || *p == '\t' || *p == ';') p++;
+        if (!*p) break;
+        end = p + strcspn(p, ", \t;");
+        if ((size_t)(end - p) == n && !strncmp(p, token, n)) return 1;
+        p = end;
+    }
+    return 0;
+}
+/* the plugins of plugins_dir, each read and whether plugins_on= names it. The list is made again each time the page
+   opens, so a folder added while the menu runs shows */
+static int plugin_named_gui(const App* app, const char* id) {
+    int i;
+    for (i = 0; i < app->plugins_count; ++i)
+        if (!strcmp(app->plugins_list[i].id, id)) return 1;
+    return 0;
+}
+static void plugins_scan_gui(App* app) {
+    char* on = app->settings_file ? snx_ini_value(app->settings_file, "plugins_on") : NULL;
+    char** names = NULL;
+    size_t count = 0, i;
+    int b;
+    app->plugins_count = 0;
+    for (b = 0; b < snx_builtin_plugin_count && app->plugins_count < GUI_PLUGINS_MAX; ++b) {
+        const SnxBuiltinPlugin* src = &snx_builtin_plugins[b];
+        GuiPlugin* p = &app->plugins_list[app->plugins_count++];
+        memset(p, 0, sizeof *p);
+        snprintf(p->id, sizeof p->id, "%s", src->id);
+        snprintf(p->name, sizeof p->name, "%s", src->name);
+        snprintf(p->title, sizeof p->title, "%s", src->title);
+        snprintf(p->versions, sizeof p->versions, "%s", src->versions);
+        p->on = plugin_token(on, src->id);
+    }
+    if (app->plugins_dir && !snx_list_dir(app->plugins_dir, &names, &count)) {
+        for (i = 0; i < count && app->plugins_count < GUI_PLUGINS_MAX; ++i) {
+            char* folder = snx_path_join(app->plugins_dir, names[i]);
+            char* manifest = folder ? snx_path_join(folder, "plugin.ini") : NULL;
+            if (manifest && snx_is_file(manifest)) {
+                GuiPlugin* p = &app->plugins_list[app->plugins_count];
+                char *name = snx_ini_value(manifest, "name"), *title = snx_ini_value(manifest, "title"),
+                     *versions = snx_ini_value(manifest, "versions");
+                memset(p, 0, sizeof *p);
+                snprintf(p->id, sizeof p->id, "%s", names[i]);
+                snprintf(p->name, sizeof p->name, "%s", name && *name ? name : names[i]);
+                snprintf(p->title, sizeof p->title, "%s", title && *title ? title : p->name);
+                snprintf(p->versions, sizeof p->versions, "%s", versions && *versions ? versions : "unknown versions");
+                if (!plugin_named_gui(app, p->id)) {
+                    p->on = plugin_token(on, names[i]);
+                    ++app->plugins_count;
+                }
+                free(name);
+                free(title);
+                free(versions);
+            }
+            free(manifest);
+            free(folder);
+        }
+        for (i = 0; i < count; ++i) free(names[i]);
+        free(names);
+    }
+    free(on);
+}
+/* the page's rows: a plugin each, said On or Off; with none, the one row that says where they go */
+static int plugins_fill(App* app) {
+    GuiPluginsForm* f = &app->plugins_form;
+    int i, n = 0;
+    memset(f, 0, sizeof *f);
+    for (i = 0; i < app->plugins_count; ++i) {
+        GuiPlugin* p = &app->plugins_list[i];
+        snprintf(app->plugins_label[n], sizeof app->plugins_label[n], "%s", p->name);
+        snprintf(app->plugins_about[n], sizeof app->plugins_about[n],
+                 snx_tr("%s: versions %s. %s"), p->title, p->versions,
+                 p->on ? snx_tr("On: its patches are written when the game starts")
+                       : snx_tr("Off: the game runs as it was made"));
+        snprintf(f->value[n], sizeof f->value[n], "%s", p->on ? snx_tr("On") : snx_tr("Off"));
+        app->plugins_keys[n] = page_row(app->plugins_label[n],
+                                        offsetof(GuiPluginsForm, value) + (size_t)n * sizeof f->value[0],
+                                        sizeof f->value[0], app->plugins_about[n]);
+        ++n;
+    }
+    if (!n) {
+        snprintf(app->plugins_label[0], sizeof app->plugins_label[0], "%s", snx_tr("No plugins"));
+        snprintf(app->plugins_about[0], sizeof app->plugins_about[0],
+                 snx_tr("A folder of %s, a plugin.ini and a patch file for each game build, is a plugin"),
+                 app->plugins_dir ? app->plugins_dir : "plugins/");
+        app->plugins_keys[0] = page_row(app->plugins_label[0], offsetof(GuiPluginsForm, value), sizeof f->value[0],
+                                        app->plugins_about[0]);
+        n = 1;
+    }
+    return n;
+}
+static const char* plugins_warning(void) {
+    return snx_tr("Plugins can crash the game, corrupt a save and stop working between a game or ScarletNX update. "
+                  "Expect breakage. A plugin is off until it is turned on, and turning it on asks once.");
+}
+static void plugins_show(App* app, int row) {
+    int n = plugins_fill(app);
+    gui_editor_form(&app->editor, app->plugins_keys, n, &app->plugins_form, NULL);
+    app->editor.flat = true;
+    app->editor.row = SDL_clamp(row, 0, gui_editor_rows(&app->editor) - 1);
+    app->form = GUI_FORM_PLUGINS;
+    app->editing = true;
+    snprintf(app->editor.note, sizeof app->editor.note, "%s", plugins_warning());
+}
+/* plugins_on= as the list has it: its id, a comma between two. The file's [plugins] section, or a line added to it */
+static int plugins_save(App* app) {
+    char text[2048] = {0};
+    size_t n = 0;
+    int i;
+    for (i = 0; i < app->plugins_count; ++i)
+        if (app->plugins_list[i].on)
+            n += (size_t)snprintf(text + n, sizeof text - n, "%s%s", n ? "," : "", app->plugins_list[i].id);
+    if (!app->settings_file) return 0;
+    if (!text[0]) return snx_ini_drop(app->settings_file, "plugins_on");
+    {
+        char why[512];
+        if (snx_ini_put(app->settings_file, "plugins", "plugins_on", text, why, sizeof why)) {
+            snprintf(app->editor.note, sizeof app->editor.note, snx_tr("Not kept: %s"), why);
+            return 1;
+        }
+    }
+    return 0;
+}
+/* a plugin row pressed: on asks once and turns it on, off turns it off at once */
+static void plugins_action(App* app, int row, int step) {
+    GuiPlugin* p;
+    (void)step;
+    if (row < 0 || row >= app->plugins_count) return;
+    p = &app->plugins_list[row];
+    if (p->on) {
+        p->on = false;
+        plugins_save(app);
+        plugins_show(app, row);
+        snprintf(app->editor.note, sizeof app->editor.note, snx_tr("%s is off: the game runs as it was made"), p->name);
+    } else {
+        app->plugin_ask = row;
+        snprintf(app->ask_line, sizeof app->ask_line,
+                 snx_tr("Turn on %s? Plugins can crash the game, corrupt a save and stop working between a game or "
+                        "ScarletNX update. Expect breakage."),
+                 p->name);
+        gui_confirm_open(&app->confirm, GUI_ASK_PLUGIN, false);
+    }
+}
+static void plugin_answer(App* app, bool taken) {
+    int row = app->plugin_ask;
+    GuiPlugin* p;
+    if (row < 0 || row >= app->plugins_count) return;
+    p = &app->plugins_list[row];
+    if (!taken) {
+        snprintf(app->editor.note, sizeof app->editor.note, "%s", snx_tr("Not turned on"));
+        return;
+    }
+    p->on = true;
+    plugins_save(app);
+    plugins_show(app, row);
+    snprintf(app->editor.note, sizeof app->editor.note,
+             snx_tr("%s is on: its patches are written when a game it names starts"), p->name);
 }
 /* the App's rows: the theme and the language go round, either way, UI scale opens its dialog, and the editor opens */
 static void app_action(App* app, int row, int step) {
@@ -10389,6 +10593,10 @@ static void editor_key(App* app, GuiKey key) {
             return;
         }
     }
+    if (app->form == GUI_FORM_PLUGINS) { /* a plugin pressed: off at once, on after the question */
+        if (what == GUI_EDITOR_ACTION && !app->editor.step) plugins_action(app, app->editor.row, 0);
+        if (what != GUI_EDITOR_LEAVE) return;
+    }
     if (what == GUI_EDITOR_SAVE && app->form == GUI_FORM_THEME) save_editor(app);
     keep_settings(app);
     if (what == GUI_EDITOR_LEAVE) {
@@ -10511,6 +10719,7 @@ static int folder_labels(const App* app) {
 /* the line at the foot of a group's rows, about what they hold, NULL on the screens with none */
 static const char* form_note(const App* app) {
     if (app->form == GUI_FORM_APP) return app->places_note;
+    if (app->form == GUI_FORM_PLUGINS) return app->editor.note;
     if (app->form == GUI_FORM_FOLDERS) { /* the focused folder whole, its row cut to fit */
         int at, group, kind = folder_row(app, app->editor.row, &at, &group);
         return kind == GUI_ROW_PLACE ? app->place_line[at]
@@ -10531,6 +10740,9 @@ static const GuiEditor* form_rows(App* app, GuiEditor* peek) {
     if (g == 0) {
         app_values(app);
         gui_editor_form(peek, app_keys, GUI_APP_ROWS, &app->app_form, NULL);
+    } else if (!strcmp(app->group_keys[g].key, "Plugins")) {
+        plugins_scan_gui(app);
+        gui_editor_form(peek, app->plugins_keys, plugins_fill(app), &app->plugins_form, NULL);
     } else if (users_group(app, g))
         gui_editor_form(peek, app->users_keys, users_fill(app), &app->users_form, NULL);
     else {
@@ -10991,7 +11203,8 @@ static void draw_form(App* app) {
         else
             pane(app, f.place.side,
                  app->form == GUI_FORM_GROUP && app->page >= 0 ? snx_tr(app->settings.keys[app->page].key)
-                                                               : snx_tr(app->group_keys[g].key));
+                 : app->form == GUI_FORM_PLUGINS            ? snx_tr("Plugins")
+                                                              : snx_tr(app->group_keys[g].key));
         ui_form_side_draw(app, f.right, app->scale, f.right_lists);
         if (form_note(app)) { /* a half step under the text's letters, as form_boxes measured it */
             GuiRect text = inner(app, f.info);
@@ -12776,6 +12989,8 @@ static void change_answer(App* app, GuiAsk ask, bool taken) {
         caches_delete(app);
     else if (ask == GUI_ASK_DRIVER)
         driver_remove(app);
+    else if (ask == GUI_ASK_PLUGIN)
+        plugin_answer(app, true);
 }
 /* the functions an AOT pack used, from the driver's line, -1 when it printed none */
 static int aot_built(const GuiSteps* steps) {
@@ -13388,7 +13603,7 @@ static void launch(App* app, char* absolute, bool prepared) {
     }
     /* the driver, the file, the settings, --repo and its folder, the picked games and extraction folders, NULL */
     GuiSettings* s = settings_of(app);
-    const char** argv = (const char**)snx_alloc((size_t)(s->count + 19) * sizeof(*argv));
+    const char** argv = (const char**)snx_alloc((size_t)(s->count + 21) * sizeof(*argv));
     char* out = NULL; /* a dump's extraction in the picked extractions folder */
     size_t n = 1;
     argv[0] = direct ? absolute : driver;
@@ -13409,6 +13624,15 @@ static void launch(App* app, char* absolute, bool prepared) {
         if (app->aot_hook) argv[n++] = "--hook-direct-calls";
     }
     if (app->menu.selected == GUI_SWITCH && !make) n += gui_settings_options(s, 1, argv + n);
+    /* the plugins on, and the folder they are in: their patches are written into the game as it starts */
+    if (app->menu.selected == GUI_SWITCH && !make && app->settings_file && app->plugins_dir) {
+        char* on = snx_ini_value(app->settings_file, "plugins_on");
+        if (on && *on) {
+            argv[n++] = snx_format("--plugins-on=%s", on);
+            argv[n++] = snx_format("--plugins-dir=%s", app->plugins_dir);
+        }
+        free(on);
+    }
     /* the launcher's GPU driver and Freedreno variables, where the game's .ini has none of its own */
     if (app->menu.selected == GUI_SWITCH && !make) {
         char* ini = game_ini_of(absolute);
@@ -15177,7 +15401,7 @@ static void ask_key(App* app, GuiKey key) {
         made_answer(app, key == GUI_SELECT, second);
     else if (ask == GUI_ASK_CLEAN || ask == GUI_ASK_RESET || ask == GUI_ASK_PLACES || ask == GUI_ASK_PLACE ||
              ask == GUI_ASK_FOLDER || ask == GUI_ASK_MOVE || ask == GUI_ASK_STATE || ask == GUI_ASK_CACHE ||
-             ask == GUI_ASK_DRIVER)
+             ask == GUI_ASK_DRIVER || ask == GUI_ASK_PLUGIN)
         change_answer(app, ask, second);
     else if (ask == GUI_ASK_CLOSE && second) { /* the run ends with the menu, the queue's recompile too */
         if (app->menu.running) abort_run(app);
@@ -16568,6 +16792,7 @@ static void forget(App* app) {
     free(app->aot_cache);
     free(app->themes_dirs[0]);
     free(app->themes_dirs[1]);
+    free(app->plugins_dir);
     gui_themes_free(&app->themes);
     free(app->keys_path);
     free(app->recent_file);

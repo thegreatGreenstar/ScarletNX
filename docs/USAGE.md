@@ -204,6 +204,20 @@ naming the module it looked for. It refuses too a name the cheats folder has alr
 that is not a `.txt`, one over 1 MiB, one with no `[name]` line, and on a phone a document of an app or a cloud that no
 path reaches.
 
+### Plugins
+
+A plugin changes a game while it runs, without a recompile. The first plugin, `ToTK`, is built into ScarletNX itself.
+A folder in the data folder's `plugins/` adds another. The launcher's **Settings > Plugins** lists them and turns each
+one on or off; every plugin is off until it is turned on, and turning one on asks once. The ones on are kept in
+`plugins_on=` in the launcher's `settings.ini`. Plugins can crash the game, corrupt a save and stop working between a
+game or ScarletNX update. Expect breakage.
+
+The built-in `ToTK` plugins target update 1.2.1: `ToTK (Disable DynamicRes)` holds the scene viewport at the view's
+base size, and `ToTK (Disable DynLOD)` holds the frame at the quality level that keeps the distant detail. The base
+game 1.0.0 is left as it is until its offsets are known, which the log says. On ScarletNX the game keeps its own
+30 Hz frame cadence, so the patches have not yet been verified in a scene where the game's own logic fires;
+`docs/PLUGINS.md` says what was measured and gives the format of an extra plugin and its patches.
+
 Run the same command again to retry after a failure or interruption:
 
 - `work/Game/` skips extraction. Automatic extraction publishes this directory only after success,
